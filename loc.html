@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>位置信息获取</title>
+		<!-- 引入QQ地图API -->
+		<script src="https://map.qq.com/api/js?v=2.exp&key=7AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5"></script>
+		<style>
+				body {
+						max-width: 800px;
+						margin: 10px auto;
+						padding: 10px;
+						line-height: 1.6;
+				}
+				.info-box {
+						border: 1px solid #ccc;
+						padding: 20px;
+						border-radius: 5px;
+				}
+				.info-item {
+						margin: 10px 0;
+						padding: 8px;
+						background-color: #f5f5f5;
+						border-radius: 3px;
+				}
+				.correction-note {
+						font-size: 0.9em;
+						color: #666;
+						margin-top: 5px;
+				}
+				.loading {
+						color: #666;
+						padding: 20px;
+						text-align: center;
+				}
+				a {
+						text-decoration: none;
+						color: black;
+				}
+		</style>
+</head>
+<body>
+		<h1><a href='./index.html?t=<?php echo time();?>'>位置信息展示</a></h1>
+
+		<div class="info-box">
+				<div id="locationContent">
+						<div class="loading" id="loading">正在获取位置信息...</div>
+				</div>
+		</div>
+
+		<script>
+				// 获取当前北京时间
+				function getBeijingTime() {
+						const now = new Date();
+						const utcTime = now.getTime() + now.getTimezoneOffset() * 60000;
+						const beijingTime = new Date(utcTime + 8 * 3600000);
+						return beijingTime.toISOString().slice(0, 19).replace('T', ' ');
+				}
+
+				// URL参数解析
+				function getUrlParams() {
+						const params = {};
+						const search = window.location.search.substring(1);
+						search.split('&').forEach(item => {
+								const [key, value] = item.split('=');
+								if (key) params[key] = decodeURIComponent(value);
+						});
+						return params;
+				}
+
+				// WGS84转GCJ02(火星坐标系)
+				function wgs84togcj02(lat, lon) {
+						const pi = 3.1415926535897932384626;
+						const a = 6378245.0;
+						const ee = 0.00669342162296594323;
+
+						if (outOfChina(lat, lon)) {
+								return { lat, lng: lon };
+						}
+
+						let dLat = transformLat(lon - 105.0, lat - 35.0);
+						let dLon = transformLon(lon - 105.0, lat - 35.0);
+						const radLat = lat / 180.0 * pi;
+						let magic = Math.sin(radLat);
+						magic = 1 - ee * magic * magic;
+						const sqrtMagic = Math.sqrt(magic);
+						dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * pi);
+						dLon = (dLon * 180.0) / (a / sqrtMagic * Math.cos(radLat) * pi);
+						const mgLat = lat + dLat;
+						const mgLon = lon + dLon;
+
+						return { lat: mgLat, lng: mgLon };
+				}
+
+				// 判断是否在国内，不在国内则不做偏移
+				function outOfChina(lat, lon) {
+						return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271;
+				}
+
+				function transformLat(x, y) {
+						const pi = 3.1415926535897932384626;
+						let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+						ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+						ret += (20.0 * Math.sin(y * pi) + 40.0 * Math.sin(y / 3.0 * pi)) * 2.0 / 3.0;
+						ret += (160.0 * Math.sin(y / 12.0 * pi) + 320 * Math.sin(y * pi / 30.0)) * 2.0 / 3.0;
+						return ret;
+				}
+
+				function transformLon(x, y) {
+						const pi = 3.1415926535897932384626;
+						let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+						ret += (20.0 * Math.sin(6.0 * x * pi) + 20.0 * Math.sin(2.0 * x * pi)) * 2.0 / 3.0;
+						ret += (20.0 * Math.sin(x * pi) + 40.0 * Math.sin(x / 3.0 * pi)) * 2.0 / 3.0;
+						ret += (150.0 * Math.sin(x / 12.0 * pi) + 300.0 * Math.sin(x / 30.0 * pi)) * 2.0 / 3.0;
+						return ret;
+				}
+
+				// 地址解析
+				function getAddress(lat, lng, callback) {
+						const qqMapKey = '7AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5'; // 替换为您自己的密钥
+						const apiUrl = `https://apis.map.qq.com/ws/geocoder/v1/?location=${lat},${lng}&key=${qqMapKey}&get_poi=0`;
+
+						fetch(apiUrl)
+								.then(response => response.json())
+								.then(result => {
+										if (result && result.status === 0) {
+												callback(null, result.result.formatted_addresses.recommend);
+										} else {
+												callback(new Error(`地址解析失败: ${result.message || '未知错误'}`));
+										}
+								})
+								.catch(error => {
+										callback(new Error('地址请求失败: ' + error.message));
+								});
+				}
+
+				// 显示位置信息
+				function displayLocationInfo(originalLat, originalLng, altitude) {
+						const gcj = wgs84togcj02(parseFloat(originalLat), parseFloat(originalLng));
+						const latitude = gcj.lat;
+						const longitude = gcj.lng;
+						const currentTime = getBeijingTime();
+
+						getAddress(latitude, longitude, (error, address) => {
+								const content = `
+										<div class="info-item">
+												<strong>原始经纬度（WGS84）：</strong><br>${parseFloat(originalLat).toFixed(6)}, ${parseFloat(originalLng).toFixed(6)}
+												<div class="correction-note">设备直接获取的GPS坐标</div>
+										</div>
+										<div class="info-item">
+												<strong>纠偏后经纬度（GCJ02）：</strong><br>${latitude.toFixed(6)}, ${longitude.toFixed(6)}
+												<div class="correction-note">适用于国内地图的火星坐标系</div>
+										</div>
+										<div class="info-item">
+												<strong>海拔：</strong>${altitude || '无法获取海拔信息'} 米
+										</div>
+										<div class="info-item">
+												<strong>位置信息：</strong>${error ? error.message : address}
+										</div>
+										<div class="info-item">
+												<strong>北京时间：</strong>${currentTime}
+										</div>
+								`;
+								document.getElementById('locationContent').innerHTML = content;
+						});
+				}
+
+				// 初始化
+				function init() {
+						const params = getUrlParams();
+
+						// 如果已有经纬度参数，直接显示
+						if (params.lat && params.lng) {
+								displayLocationInfo(params.lat, params.lng, params.alt);
+								return;
+						}
+
+						// 定位超时控制
+						const locationTimeout = setTimeout(() => {
+								document.getElementById('loading').textContent = '获取位置超时，请刷新页面重试';
+						}, 15000);
+
+						// 尝试获取当前位置
+						if (navigator.geolocation) {
+								navigator.geolocation.getCurrentPosition(
+										(position) => {
+												clearTimeout(locationTimeout);
+												const lat = position.coords.latitude;
+												const lng = position.coords.longitude;
+												const alt = position.coords.altitude !== null ? position.coords.altitude.toFixed(2) : '未知';
+
+												// 携带参数重新加载页面
+												window.location.href = `?lat=${lat}&lng=${lng}&alt=${alt}`;
+										},
+										(error) => {
+												clearTimeout(locationTimeout);
+												const errorMessages = {
+														1: "用户拒绝了位置请求",
+														2: "位置信息不可用",
+														3: "获取位置超时"
+												};
+												const message = errorMessages[error.code] || "无法获取位置信息";
+												document.getElementById('loading').textContent = `定位失败: ${message}`;
+										},
+										{
+												timeout: 10000,
+												enableHighAccuracy: true
+										}
+								);
+						} else {
+								clearTimeout(locationTimeout);
+								document.getElementById('loading').textContent = '您的浏览器不支持位置服务';
+						}
+				}
+
+				// 页面加载完成后初始化
+				window.onload = init;
+		</script>
+</body>
+</html>
