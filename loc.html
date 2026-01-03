@@ -36,6 +36,7 @@
 		function getAddress(lat, lng, callback) {
 			const geocoder = new qq.maps.Geocoder({
 				complete: res => {
+					console.log('调试：解析结果', res);
 					callback(null, res.detail.address);
 				},
 				error: () => {
