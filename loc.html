@@ -4,13 +4,15 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>当前位置信息</title>
+	<!-- 引入腾讯地图前端JS API（支持跨域） -->
+	<script src="https://map.qq.com/api/js?v=2.exp&key=AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5"></script>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body { max-width: 600px; margin: 20px auto; padding: 0 15px; line-height: 1.6; }
-		.container { padding: 20px; border: 1px solid #eee; border-radius: 8px; background: #f9f9f9; }
-		.item { margin: 10px 0; padding: 8px; background: #fff; border-radius: 4px; }
-		.loading { color: #666; text-align: center; padding: 20px; }
-		.error { color: #dc3545; padding: 10px; background: #f8d7da; border-radius: 4px; }
+		body { margin: 10px auto; padding: 0 8px; line-height: 1.6; }
+		.container { padding: 10px; border: 1px solid #eee; border-radius: 8px; background: #f9f9f9; }
+		.item { margin: 5px 0; padding: 4px; background: #fff; border-radius: 4px; }
+		.loading { color: #666; text-align: center; padding: 10px; }
+		.error { color: #dc3545; padding: 5px; background: #f8d7da; border-radius: 4px; }
 		strong { color: #212529; }
 	</style>
 </head>
@@ -20,9 +22,6 @@
 	</div>
 
 	<script>
-		// 替换为你的腾讯位置服务API Key
-		const QQ_MAP_KEY = "7AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5";
-
 		// 格式化当前日期时间（YYYY-MM-DD HH:mm:ss）
 		function formatDateTime() {
 			const now = new Date();
@@ -33,33 +32,36 @@
 			}).replace(/\//g, '-');
 		}
 
-		// 逆地址解析：经纬度转地址
-		async function getAddress(lat, lng) {
-			try {
-				const res = await fetch(`https://apis.map.qq.com/ws/geocoder/v1/?location=${lat},${lng}&key=${QQ_MAP_KEY}&get_poi=0`);
-				const data = await res.json();
-				return data.status === 0 ? data.result.formatted_addresses.recommend : "地址解析失败";
-			} catch (e) {
-				return "地址请求失败";
-			}
+		// 逆地址解析（用腾讯前端JS API，支持跨域）
+		function getAddress(lat, lng, callback) {
+			const geocoder = new qq.maps.Geocoder({
+				complete: res => {
+					callback(null, res.detail.address);
+				},
+				error: () => {
+					callback(new Error("地址解析失败"));
+				}
+			});
+			geocoder.getAddress(new qq.maps.LatLng(lat, lng));
 		}
 
 		// 展示位置信息
-		async function showLocation(pos) {
+		function showLocation(pos) {
 			const { latitude, longitude, altitude } = pos.coords;
 			const lat = latitude.toFixed(6);
 			const lng = longitude.toFixed(6);
 			const alt = altitude ? altitude.toFixed(2) + ' 米' : '无法获取';
-			const address = await getAddress(lat, lng);
-			const datetime = formatDateTime(); // 获取格式化时间
+			const datetime = formatDateTime();
 
-			document.getElementById('content').innerHTML = `
-				<div class="item"><strong>纬度：</strong>${lat}</div>
-				<div class="item"><strong>经度：</strong>${lng}</div>
-				<div class="item"><strong>海拔：</strong>${alt}</div>
-				<div class="item"><strong>地址：</strong>${address}</div>
-				<div class="item"><strong>当前时间：</strong>${datetime}</div>
-			`;
+			getAddress(lat, lng, (err, address) => {
+				document.getElementById('content').innerHTML = `
+					<div class="item"><strong>纬度：</strong>${lat}</div>
+					<div class="item"><strong>经度：</strong>${lng}</div>
+					<div class="item"><strong>海拔：</strong>${alt}</div>
+					<div class="item"><strong>地址：</strong>${err ? err.message : address}</div>
+					<div class="item"><strong>当前时间：</strong>${datetime}</div>
+				`;
+			});
 		}
 
 		// 处理定位错误
@@ -69,7 +71,6 @@
 				2: "位置信息不可用",
 				3: "定位超时"
 			}[err.code] || "定位失败：" + err.message;
-
 			document.getElementById('content').innerHTML = `<div class="error">${errMsg}</div>`;
 		}
 
