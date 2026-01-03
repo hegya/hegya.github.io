@@ -4,8 +4,6 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>当前位置信息</title>
-	<!-- 引入腾讯地图前端JS API（支持跨域） -->
-	<script src="https://map.qq.com/api/js?v=2.exp&key=7AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5"></script>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body { margin: 10px auto; padding: 0 8px; line-height: 1.6; }
@@ -22,6 +20,8 @@
 	</div>
 
 	<script>
+		const QQ_MAP_KEY = "7AOBZ-R2S3J-PAWFO-KXURI-IB4AF-4PBG5";
+
 		// 格式化当前日期时间（YYYY-MM-DD HH:mm:ss）
 		function formatDateTime() {
 			const now = new Date();
@@ -32,18 +32,35 @@
 			}).replace(/\//g, '-');
 		}
 
-		// 逆地址解析（用腾讯前端JS API，支持跨域）
-		function getAddress(lat, lng, callback) {
-			const geocoder = new qq.maps.Geocoder({
-				complete: res => {
-					console.log('调试：解析结果', res);
-					callback(null, res.detail.address);
-				},
-				error: () => {
-					callback(new Error("地址解析失败"));
+		// 异步加载腾讯地图API（仅用于地址解析，失败则跳过）
+		function loadQQMapApi(callback) {
+			if (window.qq && window.qq.maps) {
+				callback(true);
+				return;
+			}
+			// 动态加载
+			const script = document.createElement('script');
+			script.src = `https://map.qq.com/api/js?v=2.exp&key=${QQ_MAP_KEY}&callback=qqMapApiLoaded`;
+			script.async = true;
+			script.defer = true;
+			window.qqMapApiLoaded = () => callback(true);
+			script.onerror = () => callback(false); // 加载失败回调
+			document.head.appendChild(script);
+		}
+
+		// 尝试解析地址
+		function tryGetAddress(lat, lng, callback) {
+			loadQQMapApi((apiLoaded) => {
+				if (!apiLoaded) {
+					callback("未加载地图API，仅展示坐标");
+					return;
 				}
+				const geocoder = new qq.maps.Geocoder({
+					complete: res => callback(res.detail.address),
+					error: () => callback("地址解析失败（坐标未转换）")
+				});
+				geocoder.getAddress(new qq.maps.LatLng(lat, lng));
 			});
-			geocoder.getAddress(new qq.maps.LatLng(lat, lng));
 		}
 
 		// 展示位置信息
@@ -54,12 +71,12 @@
 			const alt = altitude ? altitude.toFixed(2) + ' 米' : '无法获取';
 			const datetime = formatDateTime();
 
-			getAddress(lat, lng, (err, address) => {
+			getAddress(lat, lng, (address) => {
 				document.getElementById('content').innerHTML = `
 					<div class="item"><strong>纬度：</strong>${lat}</div>
 					<div class="item"><strong>经度：</strong>${lng}</div>
 					<div class="item"><strong>海拔：</strong>${alt}</div>
-					<div class="item"><strong>地址：</strong>${err ? err.message : address}</div>
+					<div class="item"><strong>地址：</strong>${address}</div>
 					<div class="item"><strong>当前时间：</strong>${datetime}</div>
 				`;
 			});
